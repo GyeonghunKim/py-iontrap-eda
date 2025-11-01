@@ -1,6 +1,6 @@
 from .base_layer import BaseLayer, LayerName
 from typing import Dict
-from .layer_electrode import LayerElectrode
+from ..electrode import Electrode
 
 class ViaLayer(BaseLayer):
     def __init__(self, name: LayerName, long_name: str, description: str):

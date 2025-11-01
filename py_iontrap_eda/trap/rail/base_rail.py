@@ -8,9 +8,10 @@ import shapely
 import matplotlib.pyplot as plt
 import gdsfactory as gf
 
-from .rail_electrode import RailElectrode, RouteMethod
+from ..electrode import Electrode
+from ..route_method import RouteMethod
 from .zone import Zone, Spacing
-from .port import Port
+from ..port import Port
 from ...utils import Units
 
 @dataclass
@@ -25,7 +26,7 @@ class BaseRail(ABC):
     def __init__(self, name: str, parameters: BaseRailParameters):
         self.name = name
         self.parameters = parameters
-        self.electrodes: List[RailElectrode] = []
+        self.electrodes: List[Electrode] = []
         self._assign_width_blank_spaces()
         self.dc_widths = np.hstack([zones.dc_widths for zones in self.parameters.zones])
         self.dc_z_points = np.hstack(
@@ -38,6 +39,11 @@ class BaseRail(ABC):
         self._translate_zones()
         self.total_negatives = self._get_total_negatives()
     
+    def get_electrode(self, name: str):
+        for electrode in self.electrodes:
+            if electrode.name == name:
+                return electrode
+        raise ValueError(f"Electrode {name} not found")
     def save(self, filename: str):
         with open(filename, 'wb') as f:
             pickle.dump(self, f)
@@ -121,16 +127,16 @@ class BaseRail(ABC):
                 x_min, y_min, x_max, y_max = intersection.bounds
                 if x_min == x_max: # either 0 or 180
                     if np.isclose(x_min, bbox_x_min):
-                        orientation = 180
+                        orientation = 180 
                     elif np.isclose(x_min, bbox_x_max):
                         orientation = 0
                     else:
                         raise ValueError(f"Expected LineString intersection for electrode {electrode.name}, got {intersection.geom_type}")
                 elif y_min == y_max: # either 90 or -90
                     if np.isclose(y_min, bbox_y_min):
-                        orientation = -90
-                    elif np.isclose(y_min, bbox_y_max):
                         orientation = 90
+                    elif np.isclose(y_min, bbox_y_max):
+                        orientation = -90
                     else:
                         raise ValueError(f"Expected LineString intersection for electrode {electrode.name}, got {intersection.geom_type}")
                 else:

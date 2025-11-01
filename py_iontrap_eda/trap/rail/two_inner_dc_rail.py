@@ -5,7 +5,7 @@ import numpy as np
 import shapely
 
 from .base_rail import BaseRail, BaseRailParameters
-from .rail_electrode import RailElectrode
+from ..electrode import Electrode
 from .zone import Zone, Spacing
 from ...utils import Units
 
@@ -30,7 +30,7 @@ class TwoInnerDCRail(BaseRail):
 
         # RF
         self.electrodes.append(
-            RailElectrode(
+            Electrode(
                 "RF",
                 shapely.Polygon(
                     (
@@ -65,7 +65,7 @@ class TwoInnerDCRail(BaseRail):
 
         # INNER DC
         self.electrodes.append(
-            RailElectrode(
+            Electrode(
                 "E0",
                 shapely.Polygon(
                     (
@@ -81,7 +81,7 @@ class TwoInnerDCRail(BaseRail):
             )
         )
         self.electrodes.append(
-            RailElectrode(
+            Electrode(
                 "E1",
                 shapely.Polygon(
                     (
@@ -102,7 +102,7 @@ class TwoInnerDCRail(BaseRail):
         for z_left, z_right in zip(self.dc_z_points[:-1], self.dc_z_points[1:]):
             for sign in [1, -1]:
                 self.electrodes.append(
-                    RailElectrode(
+                    Electrode(
                         f"E{electrode_count}",
                         shapely.Polygon(
                             (

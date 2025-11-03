@@ -13,7 +13,7 @@ class Electrode:
         self.port: Optional[Port] = None
         self.via_pad: Optional[shapely.Polygon] = None
         self.route_method = route_method
-        
+        self.via_pad_layer_down_to: Optional[LayerName] = None
     def __str__(self):
         return f"{self.name}: {self.geometry}"
 

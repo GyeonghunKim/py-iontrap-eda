@@ -60,7 +60,11 @@ class Trap:
             )
     def add_bond_pad(self, bond_pad: BondPad):
         self.bond_pads[bond_pad.name] = bond_pad
-    
+        electrode = self.rail.get_electrode(bond_pad.name)
+        if electrode is not None and electrode.route_method == RouteMethod.VIA:
+            electrode.via_pad_layer_down_to = bond_pad.via_pad_layer_down_to
+            
+            
     def add_bond_pads(self, 
                       names: List[str], 
                       routing_methods: List[RouteMethod], 
@@ -81,20 +85,21 @@ class Trap:
             via_pad_heights = [None] * len(names)
             via_pad_layers = [None] * len(names)
         dr = np.array([0, 0])
+        
         if location == "left-top":
             x = -self.width/2 + offset_x + width/2
             y = 0 + offset_y + height/2
             dr = np.array([0, width + gap])
             orientation = 0
+            
         elif location == "left-bottom":
             x = -self.width/2 + offset_x + width/2
             y = 0 - offset_y - height/2
             dr = np.array([0, - (width + gap)])
             orientation = 0
+            
         else:
             raise ValueError(f"Invalid location: {location}")
-        
-        
         
         for i, (name, routing_method, via_pad_center, via_pad_width, via_pad_height, via_pad_layer_down_to) in enumerate(
             zip(names, routing_methods, via_pad_centers, via_pad_widths, via_pad_heights, via_pad_layer_down_tos)
@@ -107,7 +112,15 @@ class Trap:
                 via_pad_height = height
             
             self.add_bond_pad(BondPad(name, (x + i * dr[0], y + i * dr[1]), width, height, orientation, routing_method, via_pad_center, via_pad_width, via_pad_height, via_pad_layer_down_to))
-
+            if routing_method == RouteMethod.VIA:
+                electrode = self.rail.get_electrode(name)
+                if electrode is not None:
+                    electrode.via_pad_layer_down_to = via_pad_layer_down_to
+    def compile_via_pads(self):
+        for electrode in self.rail.electrodes:
+            if electrode.route_method == RouteMethod.VIA:
+                self.layers[electrode.via_pad_layer_down_to].add_electrode(Electrode(electrode.name, electrode.via_pad, RouteMethod.VIA))
+                
     def compile_dicing_channel(self):
         def dicing_channel_factory():
             dicing_channel = gf.Component()

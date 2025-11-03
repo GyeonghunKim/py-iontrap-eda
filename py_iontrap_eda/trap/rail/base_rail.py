@@ -43,7 +43,8 @@ class BaseRail(ABC):
         for electrode in self.electrodes:
             if electrode.name == name:
                 return electrode
-        raise ValueError(f"Electrode {name} not found")
+        return None
+    
     def save(self, filename: str):
         with open(filename, 'wb') as f:
             pickle.dump(self, f)

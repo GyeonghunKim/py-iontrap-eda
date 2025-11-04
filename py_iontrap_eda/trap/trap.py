@@ -1,8 +1,11 @@
 from typing import List, Dict, Optional, Tuple, Callable
 from .layer.base_layer import BaseLayer, LayerName
+from .layer.metal_layer import MetalLayer
+from .layer.via_layer import ViaLayer
 from .thickness_map import ThicknessMap
 from .rail.base_rail import BaseRail
 import shapely
+
 
 import gdsfactory as gf
 import numpy as np
@@ -31,6 +34,8 @@ class Trap:
         self.dicing_channel_layer = dicing_channel_layer
         self.create_dicing_channel()
         self.bond_pads: Dict[str, BondPad] = {}
+        self.via_route_map: Dict[Tuple[str, str], LayerName] = {}
+        self.via_routing_width: float = 10 * Units.um
         
     def create_dicing_channel(self):
         self.die_geometry = shapely.Polygon([
@@ -116,11 +121,50 @@ class Trap:
                 electrode = self.rail.get_electrode(name)
                 if electrode is not None:
                     electrode.via_pad_layer_down_to = via_pad_layer_down_to
-    def compile_via_pads(self):
+                    
+    def compile_via_pads_factory(self):
         for electrode in self.rail.electrodes:
-            if electrode.route_method == RouteMethod.VIA:
-                self.layers[electrode.via_pad_layer_down_to].add_electrode(Electrode(electrode.name, electrode.via_pad, RouteMethod.VIA))
+            if electrode.route_method != RouteMethod.VIA:
+                continue
+
+            via_pad_layer_down_to = electrode.via_pad_layer_down_to
+            using_layer_names = self.thickness_map.layer_names[1:self.thickness_map.layer_names.index(via_pad_layer_down_to) + 1]
+            for layer_name in using_layer_names:
+                layer = self.layers[layer_name]
+                if isinstance(layer, MetalLayer):
+                    layer.add_via_pad(electrode.via_pad)
+                elif isinstance(layer, ViaLayer):
+                    layer.add_via_area(electrode.via_pad)
+        for bond_pad in self.bond_pads.values():
+            if bond_pad.route_method == RouteMethod.VIA:
+                electrode = self.rail.get_electrode(bond_pad.name)
+                if electrode is not None:
+                    electrode.via_pad_layer_down_to = bond_pad.via_pad_layer_down_to
+                    using_layer_names = self.thickness_map.layer_names[1:self.thickness_map.layer_names.index(electrode.via_pad_layer_down_to) + 1]
+                    for layer_name in using_layer_names:
+                        layer = self.layers[layer_name]
+                        if isinstance(layer, MetalLayer):
+                            layer.add_via_pad(bond_pad.via_pad)
+                        elif isinstance(layer, ViaLayer):
+                            layer.add_via_area(bond_pad.via_pad)
+        for layer_name in self.thickness_map.layer_names:
+            layer = self.layers[layer_name]
+            if isinstance(layer, ViaLayer):
+                layer.arange_via_squares()
                 
+        def via_pads_factory():
+            c = gf.Component()
+            for layer_name in self.thickness_map.layer_names:
+                layer = self.layers[layer_name]
+                if isinstance(layer, MetalLayer):
+                    for via_pad in layer.via_pads:
+                        c.add_polygon(np.array(via_pad.exterior.xy).T / Units.um, layer=layer_name)
+                elif isinstance(layer, ViaLayer):
+                    for via_square in layer.via_squares:
+                        c.add_polygon(np.array(via_square.exterior.xy).T / Units.um, layer=layer_name)
+            return c
+        self.via_pads_factory = via_pads_factory
+        
     def compile_dicing_channel(self):
         def dicing_channel_factory():
             dicing_channel = gf.Component()
@@ -173,24 +217,7 @@ class Trap:
         self.layers[self.thickness_map.layer_names[0]].add_electrode(Electrode(electrode_name, total_polygon, RouteMethod.ROUTED))
         self.bond_pads.pop(bond_pad_name)
         
-    def compile_bond_pads(self):
-        top_layer_name = self.thickness_map.layer_names[0]
-        def bond_pad_factory(bond_pad: BondPad):
-            c = gf.Component()
-            c.add_polygon(np.array(bond_pad.geometry.exterior.xy).T / Units.um, layer=top_layer_name)
-            c.add_label(bond_pad.name, position=c.dcenter, layer=top_layer_name)
-            if bond_pad.route_method == RouteMethod.PORT:
-                c.add_port(name=bond_pad.name, center=np.array(bond_pad.port.center) / Units.um, width=bond_pad.port.width / Units.um, orientation=bond_pad.port.orientation, layer=top_layer_name)
-            return c
-        
-        def bond_pads_factory():
-            c = gf.Component()
-            for bond_pad in self.bond_pads.values():
-                c_temp = bond_pad_factory(bond_pad)
-                c << c_temp
-            return c
-        
-        self.bond_pads_factory = bond_pads_factory
+
     def compile_rf_ground_gap_tapering(self, tapering_length_from_left_edge: float, max_gap: float, min_gap: float, max_gap_length: float):
         rf_pad_height =(self.rail.parameters.inner_dc_width + self.rail.parameters.rf_width)
 
@@ -350,15 +377,69 @@ class Trap:
             return c
         self.top_layer_factory = top_layer_factory
         
+    def auto_via_routing(self, electrode_name: str, bond_pad_name: str, via_routing_width: Optional[float]=None, start_straight_length: Optional[float]= 500 * Units.um, fixed_points: Optional[List[Tuple[float, float]]]=None):
+        if via_routing_width is None:
+            via_routing_width = self.via_routing_width
+        electrode = self.rail.get_electrode(electrode_name)
+        bond_pad = self.bond_pads[bond_pad_name]
+        if electrode.route_method != RouteMethod.VIA:
+            raise ValueError(f"Electrode {electrode_name} is not a via route method")
+        if bond_pad.route_method != RouteMethod.VIA:
+            raise ValueError(f"Bond pad {bond_pad_name} is not a via route method")
+        if electrode.via_pad_layer_down_to != bond_pad.via_pad_layer_down_to:
+            raise ValueError(f"Electrode {electrode_name} and bond pad {bond_pad_name} have different via pad layer down to")
+        via_pad_layer_down_to = electrode.via_pad_layer_down_to
+        layer = self.layers[via_pad_layer_down_to]
+        c = gf.Component()
+        ports_1 =c.add_port(name=electrode_name, center=np.array(electrode.port.center) / Units.um, width=electrode.port.width / Units.um, orientation=electrode.port.orientation, layer=layer.name)
+        ports_2 = c.add_port(name=bond_pad_name, center=np.array(bond_pad.port.center) / Units.um, width=bond_pad.port.width / Units.um, orientation=bond_pad.port.orientation, layer=layer.name)
+
+        route = gf.routing.route_single_electrical(
+            c,
+            ports_1,
+            ports_2,
+            width=via_routing_width / Units.um,
+            layer=layer.name, 
+            start_straight_length = start_straight_length / Units.um,
+        )
         
-    def compile(self):
+        self.via_route_map[(electrode_name, bond_pad_name)] = c
+        
+        
+    def compile_rf_via_structure_factory(self):
+        rf_geometry = self.rail.get_electrode('RF').geometry
+        for layer_name in self.thickness_map.layer_names[1:]:
+            layer = self.layers[layer_name]
+            if isinstance(layer, ViaLayer):
+                rf_geometry_via_squares = layer.arange_via_squares_in_rf_geometry(rf_geometry)
+                
+        def rf_via_structure_factory():
+            c = gf.Component()
+            for layer in self.layers[self.thickness_map.layer_names[1:]]:
+                if isinstance(layer, MetalLayer):
+                    c.add_polygon(np.array(rf_geometry.exterior.xy).T / Units.um, layer=layer.name)
+                if isinstance(layer, ViaLayer):
+                    for via_square in rf_geometry_via_squares:
+                        c.add_polygon(np.array(via_square.exterior.xy).T / Units.um, layer=layer.name)
+            return c
+        
+    def compile(self, do_rf_via_structure: bool=True):
         self.compile_dicing_channel()
         self.compile_top_layer_factory()
+        self.compile_via_pads_factory()
+        if do_rf_via_structure:
+            self.compile_rf_via_structure_factory()
+        
         
         def trap_factory():
             c = gf.Component()
             c << self.dicing_channel_factory()
             c << self.top_layer_factory()
+            c << self.via_pads_factory()
+            if do_rf_via_structure:
+                c << self.rf_via_structure_factory()
+            for route in self.via_route_map.values():
+                c << route
             return c
         
         self.trap_factory = trap_factory

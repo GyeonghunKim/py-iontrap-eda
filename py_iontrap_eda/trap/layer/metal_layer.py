@@ -22,4 +22,9 @@ class MetalLayer(BaseLayer):
     def add_via_pads(self, via_pads: List[shapely.Polygon]):
         self.via_pads = self.via_pads + via_pads
         
+    def __str__(self):
+        return f"MetalLayer(name={self.name}, electrodes={self.electrodes})"
+    
+    def __repr__(self):
+        return f"MetalLayer(name={self.name}, electrodes={self.electrodes}, via_pads={self.via_pads})"
         

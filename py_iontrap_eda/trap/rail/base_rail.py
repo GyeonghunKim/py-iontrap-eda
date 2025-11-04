@@ -21,6 +21,7 @@ class BaseRailParameters:
     zones: List[Union[Zone, Spacing]]
     z_padding: float
     via_pad_width: float
+    via_pad_gap: float
 
 class BaseRail(ABC):
     def __init__(self, name: str, parameters: BaseRailParameters):
@@ -48,6 +49,7 @@ class BaseRail(ABC):
     def save(self, filename: str):
         with open(filename, 'wb') as f:
             pickle.dump(self, f)
+            
     @classmethod
     def load(cls, filename: str):
         with open(filename, 'rb') as f:
@@ -135,9 +137,9 @@ class BaseRail(ABC):
                         raise ValueError(f"Expected LineString intersection for electrode {electrode.name}, got {intersection.geom_type}")
                 elif y_min == y_max: # either 90 or -90
                     if np.isclose(y_min, bbox_y_min):
-                        orientation = 90
-                    elif np.isclose(y_min, bbox_y_max):
                         orientation = -90
+                    elif np.isclose(y_min, bbox_y_max):
+                        orientation = 90
                     else:
                         raise ValueError(f"Expected LineString intersection for electrode {electrode.name}, got {intersection.geom_type}")
                 else:
@@ -152,7 +154,20 @@ class BaseRail(ABC):
                     electrode.geometry, 
                     electrode.port.geometry.buffer(self.parameters.via_pad_width, cap_style='square')
                 )
-     
+            electrode.via_pad = electrode.via_pad.buffer(-self.parameters.via_pad_gap / 2, cap_style='square')
+            min_x, min_y, max_x, max_y = electrode.via_pad.bounds
+        
+            if electrode.port.orientation == 0: 
+                electrode.port = Port(electrode.name, shapely.LineString([(max_x, min_y), (max_x, max_y)]), electrode.port.orientation)
+            elif electrode.port.orientation == 180:
+                electrode.port = Port(electrode.name, shapely.LineString([(min_x, min_y), (min_x, max_y)]), electrode.port.orientation)
+            elif electrode.port.orientation == 90:
+                electrode.port = Port(electrode.name, shapely.LineString([(min_x, max_y), (max_x, max_y)]), electrode.port.orientation)
+            elif electrode.port.orientation == -90:
+                electrode.port = Port(electrode.name, shapely.LineString([(min_x, min_y), (max_x, min_y)]), electrode.port.orientation)
+            else:
+                raise ValueError(f"Invalid port orientation: {electrode.port.orientation}")
+            
 
     def _get_total_negatives(self):
         negatives = []

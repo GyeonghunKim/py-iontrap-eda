@@ -13,7 +13,7 @@ class ViaLayer(BaseLayer):
         self.via_square_height = via_square_height
         self.via_square_spacing = via_square_spacing
         self.via_outside_margin = via_outside_margin
-        
+        self.rf_geometry_via_squares: List[shapely.Polygon] = []
 
         
     def add_via_area(self, via_area: shapely.Polygon):
@@ -76,4 +76,4 @@ class ViaLayer(BaseLayer):
         for square in bbox_via_squares:
             if rf_geometry.contains(square):
                 rf_geometry_via_squares.append(square)
-        return rf_geometry_via_squares
+        self.rf_geometry_via_squares = rf_geometry_via_squares

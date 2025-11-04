@@ -1,4 +1,4 @@
-from typing import List, Union, Dict
+from typing import List, Union, Dict, Optional
 from abc import abstractmethod, ABC
 from dataclasses import dataclass, field
 import pickle
@@ -20,9 +20,9 @@ class BaseRailParameters:
     total_width: float
     zones: List[Union[Zone, Spacing]]
     z_padding: float
-    via_pad_width: float
-    via_pad_gap: float
-
+    via_pad_width: Optional[float]
+    via_pad_gap: Optional[float]
+    
 class BaseRail(ABC):
     def __init__(self, name: str, parameters: BaseRailParameters):
         self.name = name
@@ -177,7 +177,7 @@ class BaseRail(ABC):
         total_negative_geom = shapely.union_all(negatives)
         return total_negative_geom
     
-    def show(self, show_via_pads: bool=True): # , fig=None, ax=None, show_bbox: bool=True):
+    def show(self, show_via_pads: bool=True, show_ports: bool=True): # , fig=None, ax=None, show_bbox: bool=True):
         c = gf.Component()
         n = gf.Component()
         for i, negative in enumerate(self.total_negatives.geoms):
@@ -188,7 +188,9 @@ class BaseRail(ABC):
             c_temp.add_polygon(np.array(electrode.geometry.exterior.xy).T / Units.um, layer=(1, 0))
             c_temp = gf.boolean(c_temp, n, 'A-B', layer=(1, 0))
             c_temp.add_label(f'{electrode.name}', position=c_temp.dcenter, layer=(1, 0))
-            c_temp.add_port(name=electrode.port.name, center=np.array(electrode.port.center) / Units.um, width=electrode.port.width / Units.um, orientation=electrode.port.orientation, layer=(1, 0))
+            if show_ports:
+                c_temp.add_port(name=electrode.port.name, center=np.array(electrode.port.center) / Units.um, width=electrode.port.width / Units.um, orientation=electrode.port.orientation, layer=(1, 0))
+
             c << c_temp
 
         if show_via_pads:

@@ -118,4 +118,5 @@ class TwoInnerDCRail(BaseRail):
                 electrode_count += 1
                 
         self.generate_ports()
-        self.generate_via_pads()
+        if self.parameters.via_pad_width is not None and self.parameters.via_pad_gap is not None:   
+            self.generate_via_pads()

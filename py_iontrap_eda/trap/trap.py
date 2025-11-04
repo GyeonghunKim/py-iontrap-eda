@@ -305,7 +305,7 @@ class Trap:
             top_layer_grounds = top_layer_grounds.difference(polygon)
             
         self.top_layer_grounds = top_layer_grounds
-            
+
             
     def compile_top_layer_gaps(self, gap_function: Callable[[shapely.Polygon], shapely.Polygon], keep_electrodes: Optional[List[str]]=None, gap_join_style: str='mitre'):
         top_layer_name = self.thickness_map.layer_names[0]
@@ -407,22 +407,24 @@ class Trap:
         
         
     def compile_rf_via_structure_factory(self):
-        rf_geometry = self.rail.get_electrode('RF').geometry
+        rf_geometry = self.layers[self.thickness_map.layer_names[0]].electrodes['RF'].geometry
         for layer_name in self.thickness_map.layer_names[1:]:
             layer = self.layers[layer_name]
             if isinstance(layer, ViaLayer):
-                rf_geometry_via_squares = layer.arange_via_squares_in_rf_geometry(rf_geometry)
+                layer.arange_via_squares_in_rf_geometry(rf_geometry)
                 
         def rf_via_structure_factory():
             c = gf.Component()
-            for layer in self.layers[self.thickness_map.layer_names[1:]]:
+            for layer_name in self.thickness_map.layer_names[1:]:
+                layer = self.layers[layer_name]               
+                
                 if isinstance(layer, MetalLayer):
                     c.add_polygon(np.array(rf_geometry.exterior.xy).T / Units.um, layer=layer.name)
                 if isinstance(layer, ViaLayer):
-                    for via_square in rf_geometry_via_squares:
+                    for via_square in layer.rf_geometry_via_squares:
                         c.add_polygon(np.array(via_square.exterior.xy).T / Units.um, layer=layer.name)
             return c
-        
+        self.rf_via_structure_factory = rf_via_structure_factory
     def compile(self, do_rf_via_structure: bool=True):
         self.compile_dicing_channel()
         self.compile_top_layer_factory()

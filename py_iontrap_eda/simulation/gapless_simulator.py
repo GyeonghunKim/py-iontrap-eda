@@ -39,6 +39,13 @@ class GaplessSolver:
         # self.get_unit_mathieu_Q()
         # self.get_unit_secular_frequency()
         # self.get_unit_trap_depth()
+    def rf_potential_factory(self, rf_voltage: float):
+        def rf_potential(x, y, z):
+            eV = Constants.e * rf_voltage
+            f_elec = self.potential_function('RF')
+            return eV * f_elec(x, y, z)
+        return rf_potential
+
     def potential_factory(self, rf_frequency: float, electrode_voltages: Dict[str, float]):
 
         def potential(x, y, z):
@@ -48,20 +55,12 @@ class GaplessSolver:
                 if electrode_name == 'RF':
                     rf_voltage = electrode_voltages['RF']
                     ponderomotive_potential = self.get_ponderomotive_potential(rf_voltage, rf_frequency)
-                    # capture the function reference directly (already bound)
                     terms.append(ponderomotive_potential)
                 else:
-                    # Capture BOTH the numeric scale and the function for THIS electrode now.
                     eV = Constants.e * electrode_voltage
                     f_elec = self.potential_function(electrode_name)
 
-                    # Option A: bind via default args (fast & simple)
                     terms.append(lambda x, y, z, eV=eV, f=f_elec: eV * f(x, y, z))
-
-                    # Option B (equivalent): partial
-                    # def scale_then_eval(f, eV, x, y, z):
-                    #     return eV * f(x, y, z)
-                    # terms.append(partial(scale_then_eval, f_elec, eV))
 
             return np.sum([t(x, y, z) for t in terms], axis=0)
 

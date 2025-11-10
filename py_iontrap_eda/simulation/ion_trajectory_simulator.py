@@ -19,13 +19,47 @@ class IonTrajectorySimulator:
         self.stiffness_matrix_function = self.get_stiffness_matrix()
         self.excitation_matrix_function = self.get_excitation_matrix()
 
+    def get_dc_electric_force(self, x: float, y: float, z: float, eps: float = 0.1*Units.um):
+        x_list = [x - eps, x + eps, x, x, x, x]
+        y_list = [y, y, y - eps, y + eps, y, y]
+        z_list = [z, z, z, z, z - eps, z + eps]
+        potential_list = [self.dc_potential_function(x_i, y_i, z_i) for x_i, y_i, z_i in zip(x_list, y_list, z_list)]
+        force_x = (potential_list[0] - potential_list[1]) / (2 * eps)
+        force_y = (potential_list[2] - potential_list[3]) / (2 * eps)
+        force_z = (potential_list[4] - potential_list[5]) / (2 * eps)
+        return np.array([force_x, force_y, force_z])
+
+    def get_rf_electric_force(self, x: float, y: float, z: float, eps: float = 0.1*Units.um):
+        x_list = [x - eps, x + eps, x, x, x, x]
+        y_list = [y, y, y - eps, y + eps, y, y]
+        z_list = [z, z, z, z, z - eps, z + eps]
+        potential_list = [self.rf_potential_function(x_i, y_i, z_i) for x_i, y_i, z_i in zip(x_list, y_list, z_list)]
+        force_x = (potential_list[0] - potential_list[1]) / (2 * eps)
+        force_y = (potential_list[2] - potential_list[3]) / (2 * eps)
+        force_z = (potential_list[4] - potential_list[5]) / (2 * eps)
+        return np.array([force_x, force_y, force_z])
+
+    def solve_exact(self, initial_position: np.ndarray, initial_velocity: np.ndarray, t_list: np.ndarray):
+        def f(t, phase_space_variable):
+            x, y, z= phase_space_variable[:3]
+            r = np.array([x, y, z])
+            vx, vy, vz = phase_space_variable[3:]
+            dxdt = vx
+            dydt = vy
+            dzdt = vz
+            dvdt = -(self.get_dc_electric_force(x, y, z) + self.get_rf_electric_force(x, y, z) * np.cos(2 * np.pi * self.rf_frequency * t)) / (self.ion.ion_mass)
+            return np.array([dxdt, dydt, dzdt, *dvdt.flatten()])
+        res = solve_ivp(f, [t_list[0], t_list[-1]], np.hstack([initial_position, initial_velocity]), method='RK45', t_eval=t_list)
+        return res.y
+
     def get_stiffness_matrix(self):
-        prefactor = 4 * self.ion.charge / (self.ion.ion_mass * (2 * np.pi * self.rf_frequency)**2)
-        hessian = nd.Hessian(lambda xyz:self.dc_potential_function(xyz[0], xyz[1], xyz[2]), step=nd.step_generators.MaxStepGenerator(1*Units.um))
-        return lambda x, y, z: prefactor * hessian((x, y, z))
+        prefactor = 4 / (self.ion.ion_mass * (2 * np.pi * self.rf_frequency)**2)
+        hessian = nd.Hessian(lambda xyz:self.dc_potential_function(xyz[0], xyz[1], xyz[2]), step=nd.step_generators.MaxStepGenerator(2*Units.um))
+        return lambda x, y, z: prefactor * hessian(np.array([x, y, z]))
 
     def get_excitation_matrix(self):
-        prefactor = 2 * self.ion.charge / (self.ion.ion_mass * (2 * np.pi * self.rf_frequency)**2)
-        hessian = nd.Hessian(lambda xyz:self.rf_potential_function(xyz[0], xyz[1], xyz[2]), step=nd.step_generators.MaxStepGenerator(1*Units.um))
-        return lambda x, y, z: prefactor *  hessian((x, y, z))
+        prefactor = 2 / (self.ion.ion_mass * (2 * np.pi * self.rf_frequency)**2)
+        hessian = nd.Hessian(lambda xyz:self.rf_potential_function(xyz[0], xyz[1], xyz[2]), step=nd.step_generators.MaxStepGenerator(2*Units.um))
 
+        return lambda x, y, z: prefactor *  hessian(np.array([x, y, z]))
+    
